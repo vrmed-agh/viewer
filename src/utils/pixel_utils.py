@@ -1,6 +1,21 @@
 import numpy as np
 
 
+# Skaner CT mierzy jak bardzo każdy punkt w ciele pochłania promieniowanie rentgenowskie
+# i zapisuje to jako liczby zwane jednostkami Hounsfielda (HU):
+#   powietrze  ≈ -1000 HU
+#   woda       ≈     0 HU
+#   kość       ≈ +1000 HU i więcej
+#
+# Monitor wyświetla kolory jako liczby 0–255, więc pełny zakres HU trzeba zmieścić na ekranie.
+# Naiwne rozciągnięcie całego zakresu (-1000…+1000) na 0–255 daje fatalny kontrast —
+# kości i tkanki miękkie wyglądają prawie tak samo.
+#
+# Okienkowanie rozwiązuje ten problem: zamiast pokazywać wszystko, wybierany jest tylko
+# fragment zakresu i rozciągany na pełne 0–255. Analogia: zoom na aparacie —
+# nie powiększa się całego zdjęcia, tylko wybrany wycinek.
+# Przykład dla tkanek miękkich: zakres [-150, 250] HU — wszystko poniżej jest czarne,
+# powyżej białe, a środek ma pełny kontrast.
 def apply_windowing(
     pixel_array: np.ndarray,
     rescale_slope: float,

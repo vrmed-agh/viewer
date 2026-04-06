@@ -4,6 +4,7 @@ from pathlib import Path
 
 from src.controllers.viewer_controller import ViewerController
 from src.input.keyboard_handler import KeyboardSteeringHandler
+from src.input.voice_handler import VoiceSteeringHandler
 from src.repositories.dicom_repository import DicomRepository
 from src.views.pygame_view import PygameView
 
@@ -39,8 +40,8 @@ def main() -> None:
         print(f"  [{index}] {scan.name}: {scan.slice_count} slices")
 
     view = PygameView()
-    steering_handler = KeyboardSteeringHandler()
-    controller = ViewerController(dataset, view, steering_handler)
+    steering_handlers = [KeyboardSteeringHandler(), VoiceSteeringHandler()]
+    controller = ViewerController(dataset, view, steering_handlers)
     controller.run()
 
 

@@ -9,11 +9,11 @@ class ViewerController:
         self,
         dataset: Dataset,
         view: PygameView,
-        steering_handler: SteeringHandler,
+        steering_handlers: list[SteeringHandler],
     ) -> None:
         self._dataset = dataset
         self._view = view
-        self._steering_handler = steering_handler
+        self._steering_handlers = steering_handlers
         self._scan_index: int = 0
         self._slice_index: int = 0
 
@@ -22,7 +22,7 @@ class ViewerController:
         while running:
             events = self._view.get_events()
 
-            for command in self._steering_handler.steer(events):
+            for command in [c for handler in self._steering_handlers for c in handler.steer(events)]:
                 if command == ViewerCommand.QUIT:
                     running = False
                 elif command == ViewerCommand.NEXT_SLICE:
