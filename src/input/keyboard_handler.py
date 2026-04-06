@@ -16,7 +16,7 @@ class KeyboardSteeringHandler(SteeringHandler):
         pygame.K_q: ViewerCommand.QUIT,
     }
 
-    def process_events(self, events: list[pygame.event.Event]) -> Iterator[ViewerCommand]:
+    def steer(self, events: list[pygame.event.Event]) -> Iterator[ViewerCommand]:
         for event in events:
             if event.type == pygame.QUIT:
                 yield ViewerCommand.QUIT

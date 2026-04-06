@@ -22,7 +22,7 @@ class ViewerController:
         while running:
             events = self._view.get_events()
 
-            for command in self._steering_handler.process_events(events):
+            for command in self._steering_handler.steer(events):
                 if command == ViewerCommand.QUIT:
                     running = False
                 elif command == ViewerCommand.NEXT_SLICE:
