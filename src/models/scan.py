@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
+from src.models.nrrd_mask import NrrdMask
 from src.models.slice_data import SliceData
 
 
@@ -9,7 +12,7 @@ class Scan:
     series_instance_uid: str
     modality: str
     slices: list[SliceData] = field(default_factory=list)
-    nrrd_mask: object = None
+    nrrd_mask: NrrdMask | None = None
 
     @property
     def name(self) -> str:

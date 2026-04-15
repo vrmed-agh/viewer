@@ -1,3 +1,4 @@
+import numpy as np
 import pygame
 
 from src.models.slice_data import SliceData
@@ -12,6 +13,8 @@ class PygameView:
     INFO_COLOR = (200, 200, 200)
     DISABLED_COLOR = (120, 60, 60)
     INFO_PADDING = 8
+    MASK_COLOR = (255, 80, 0)
+    MASK_ALPHA = 140
 
     def __init__(self) -> None:
         pygame.init()
@@ -26,6 +29,8 @@ class PygameView:
         self._cached_surface: pygame.Surface | None = None
         self._cached_slice_id: int | None = None
         self._cached_window: tuple[float, float] | None = None
+        self._cached_mask_surface: pygame.Surface | None = None
+        self._cached_mask_id: int | None = None
 
     def render(
         self,
@@ -41,11 +46,16 @@ class PygameView:
         window_center_delta: float = 0.0,
         window_width_delta: float = 0.0,
         masks_visible: bool = False,
+        mask_slice: np.ndarray | None = None,
         enabled: bool = True,
     ) -> None:
         self._screen.fill((0, 0, 0))
 
         surface = self._get_slice_surface(slice_data, window_center_delta, window_width_delta)
+
+        if masks_visible and mask_slice is not None:
+            mask_surface = self._get_mask_surface(mask_slice, surface.get_width(), surface.get_height())
+            surface.blit(mask_surface, (0, 0))
 
         if zoom != 1.0:
             size = (max(1, int(surface.get_width() * zoom)), max(1, int(surface.get_height() * zoom)))
@@ -91,6 +101,37 @@ class PygameView:
         self._cached_surface = surface
         self._cached_slice_id = id(slice_data)
         self._cached_window = window_key
+        return surface
+
+    def _get_mask_surface(
+        self,
+        mask_slice: np.ndarray,
+        width: int,
+        height: int,
+    ) -> pygame.Surface:
+        if id(mask_slice) == self._cached_mask_id and self._cached_mask_surface is not None:
+            return self._cached_mask_surface
+
+        mask_bool = (mask_slice > 0).astype(np.uint8)
+
+        rgba = np.zeros((mask_bool.shape[0], mask_bool.shape[1], 4), dtype=np.uint8)
+        rgba[..., 0] = self.MASK_COLOR[0] * mask_bool
+        rgba[..., 1] = self.MASK_COLOR[1] * mask_bool
+        rgba[..., 2] = self.MASK_COLOR[2] * mask_bool
+        rgba[..., 3] = self.MASK_ALPHA * mask_bool
+
+        transposed = np.transpose(rgba, (1, 0, 2))
+        surface = pygame.Surface((transposed.shape[0], transposed.shape[1]), pygame.SRCALPHA)
+        pygame.surfarray.blit_array(surface, transposed[:, :, :3])
+        alpha_array = pygame.surfarray.pixels_alpha(surface)
+        alpha_array[:] = transposed[:, :, 3]
+        del alpha_array
+
+        if surface.get_width() != width or surface.get_height() != height:
+            surface = pygame.transform.scale(surface, (width, height))
+
+        self._cached_mask_surface = surface
+        self._cached_mask_id = id(mask_slice)
         return surface
 
     def _render_info(

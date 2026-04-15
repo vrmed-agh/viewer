@@ -165,6 +165,12 @@ class ViewerController:
         current_scan = self._dataset.scans[self._scan_index]
         current_slice = current_scan.slices[self._slice_index]
 
+        mask_slice = None
+        if current_scan.nrrd_mask is not None:
+            volume = current_scan.nrrd_mask.volume
+            if 0 <= self._slice_index < volume.shape[0]:
+                mask_slice = volume[self._slice_index]
+
         self._view.render(
             slice_data=current_slice,
             scan_name=current_scan.name,
@@ -178,5 +184,6 @@ class ViewerController:
             window_center_delta=self._window_center_delta,
             window_width_delta=self._window_width_delta,
             masks_visible=self._masks_visible,
+            mask_slice=mask_slice,
             enabled=self._enabled,
         )
