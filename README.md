@@ -35,6 +35,6 @@ uv run main.py --dataset "Zatoki 1"
 - Paweł Grzywa
 - Hubert Piechura
 - Sonia Stanula
-- Ewa Komórkiewicz
+- Ewa Kumórkiewicz
 - Piotr Dusza
 - Mateusz Woźniak
