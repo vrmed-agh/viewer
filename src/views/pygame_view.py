@@ -120,7 +120,7 @@ class PygameView:
         rgba[..., 2] = self.MASK_COLOR[2] * mask_bool
         rgba[..., 3] = self.MASK_ALPHA * mask_bool
 
-        transposed = np.transpose(rgba, (1, 0, 2))
+        transposed = rgba
         surface = pygame.Surface((transposed.shape[0], transposed.shape[1]), pygame.SRCALPHA)
         pygame.surfarray.blit_array(surface, transposed[:, :, :3])
         alpha_array = pygame.surfarray.pixels_alpha(surface)
