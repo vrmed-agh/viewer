@@ -1,6 +1,7 @@
 from src.input.base import SteeringHandler
 from src.input.commands import ViewerAction, ViewerCommand
 from src.models.dataset import Dataset
+from src.models.scan import Scan
 from src.views.pygame_view import PygameView
 
 
@@ -25,12 +26,14 @@ class ViewerController:
         self._zoom: float = 1.0
         self._pan_x: int = 0
         self._pan_y: int = 0
-        self._plane: str = "axial"
+        self._plane: str = self._current_scan().plane if self._dataset.scans else "unknown"
         self._window_width_delta: float = 0.0
         self._window_center_delta: float = 0.0
         self._masks_visible: bool = False
         self._last_action: ViewerAction | None = None
         self._history: list[tuple] = []
+        self._preferred_series_by_plane = self._build_preferred_series_map()
+        self._log_preferred_series_map()
 
     def run(self) -> None:
         running = True
@@ -90,11 +93,11 @@ class ViewerController:
         elif command == ViewerCommand.PAN_DOWN:
             self._pan_y += self.PAN_STEP
         elif command == ViewerCommand.PLANE_AXIAL:
-            self._plane = "axial"
+            self._switch_to_plane("axial")
         elif command == ViewerCommand.PLANE_CORONAL:
-            self._plane = "coronal"
+            self._switch_to_plane("coronal")
         elif command == ViewerCommand.PLANE_SAGITTAL:
-            self._plane = "sagittal"
+            self._switch_to_plane("sagittal")
         elif command == ViewerCommand.INCREASE_CONTRAST:
             self._window_width_delta -= self.CONTRAST_STEP
         elif command == ViewerCommand.DECREASE_CONTRAST:
@@ -111,6 +114,12 @@ class ViewerController:
             self._go_to_slice(action.value)
 
         self._last_action = action
+
+    def _current_scan(self) -> Scan:
+        return self._dataset.scans[self._scan_index]
+
+    def _sync_plane_from_current_scan(self) -> None:
+        self._plane = self._current_scan().plane
 
     def _snapshot(self) -> tuple:
         return (
@@ -145,24 +154,75 @@ class ViewerController:
             self._window_center_delta,
             self._masks_visible,
         ) = state
+        self._sync_plane_from_current_scan()
 
     def _switch_slice(self, delta: int) -> None:
-        current_scan = self._dataset.scans[self._scan_index]
+        current_scan = self._current_scan()
         self._slice_index = max(0, min(self._slice_index + delta, current_scan.slice_count - 1))
 
     def _switch_scan(self, delta: int) -> None:
         self._scan_index = max(0, min(self._scan_index + delta, self._dataset.scan_count - 1))
         self._slice_index = 0
+        self._sync_plane_from_current_scan()
+
+    def _build_preferred_series_map(self) -> dict[str, int]:
+        preferred: dict[str, int] = {}
+        planes = ("axial", "coronal", "sagittal")
+        for plane in planes:
+            candidates = [
+                (index, scan)
+                for index, scan in enumerate(self._dataset.scans)
+                if scan.plane == plane and scan.is_volume
+            ]
+            if not candidates:
+                candidates = [
+                    (index, scan)
+                    for index, scan in enumerate(self._dataset.scans)
+                    if scan.plane == plane and scan.slice_count > 1
+                ]
+            if not candidates:
+                continue
+            best_index, _ = min(candidates, key=lambda item: (item[1].series_number, item[0]))
+            preferred[plane] = best_index
+        return preferred
+
+    def _log_preferred_series_map(self) -> None:
+        for plane in ("coronal", "sagittal", "axial"):
+            index = self._preferred_series_by_plane.get(plane)
+            if index is None:
+                print(f"[VIEWER] Preferred {plane}: none")
+                continue
+            scan = self._dataset.scans[index]
+            description = scan.series_description or "brak opisu"
+            print(
+                f"[VIEWER] Preferred {plane}: series #{scan.series_number} "
+                f"({scan.plane_display_name}, {scan.slice_count} slices) - {description}"
+            )
+
+    def _switch_to_plane(self, plane: str) -> None:
+        target_index = self._preferred_series_by_plane.get(plane)
+        if target_index is None:
+            print(f"[VIEWER] Plane '{plane}' -> no eligible multi-slice series")
+            return
+
+        self._scan_index = target_index
+        self._slice_index = 0
+        self._sync_plane_from_current_scan()
+        target_scan = self._current_scan()
+        print(
+            f"[VIEWER] Plane '{plane}' -> series #{target_scan.series_number} "
+            f"({target_scan.plane_display_name}, {target_scan.slice_count} slices)"
+        )
 
     def _go_to_slice(self, number: int | None) -> None:
         if number is None:
             return
-        current_scan = self._dataset.scans[self._scan_index]
+        current_scan = self._current_scan()
         index = max(0, min(number - 1, current_scan.slice_count - 1))
         self._slice_index = index
 
     def _render(self) -> None:
-        current_scan = self._dataset.scans[self._scan_index]
+        current_scan = self._current_scan()
         current_slice = current_scan.slices[self._slice_index]
 
         mask_slice = None
@@ -180,7 +240,7 @@ class ViewerController:
             slice_count=current_scan.slice_count,
             zoom=self._zoom,
             pan=(self._pan_x, self._pan_y),
-            plane=self._plane,
+            plane=current_scan.plane_display_name,
             window_center_delta=self._window_center_delta,
             window_width_delta=self._window_width_delta,
             masks_visible=self._masks_visible,
