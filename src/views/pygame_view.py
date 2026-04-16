@@ -10,7 +10,6 @@ class PygameView:
     INITIAL_HEIGHT = 768
     INFO_FONT_SIZE = 18
     INFO_COLOR = (200, 200, 200)
-    DISABLED_COLOR = (120, 60, 60)
     INFO_PADDING = 8
     MASK_COLOR = (255, 80, 0)
     MASK_ALPHA = 140
@@ -49,7 +48,6 @@ class PygameView:
         window_width_delta: float = 0.0,
         masks_visible: bool = False,
         mask_slice: np.ndarray | None = None,
-        enabled: bool = True,
     ) -> None:
         self._screen.fill((0, 0, 0))
 
@@ -69,7 +67,7 @@ class PygameView:
 
         self._render_info(
             scan_name, scan_index, scan_count, slice_index, slice_count,
-            zoom, plane, masks_visible, enabled,
+            zoom, plane, masks_visible,
         )
 
         pygame.display.flip()
@@ -143,15 +141,12 @@ class PygameView:
         zoom: float,
         plane: str,
         masks_visible: bool,
-        enabled: bool,
     ) -> None:
         lines = [
             f"Scan: {scan_name}  [{scan_index + 1}/{scan_count}]",
             f"Slice: {slice_index + 1}/{slice_count}   Plane: {plane}   Zoom: {zoom:.1f}x   Masks: {'on' if masks_visible else 'off'}",
-            f"[<- ->] slice   [up/down] scan   [+/-] zoom   [WASD] pan   [1/2/3] plane   [M/N] masks   [T] toggle   [Q/ESC] quit",
+            f"[<- ->] slice   [up/down] scan   [+/-] zoom   [WASD] pan   [1/2/3] plane   [M/N] masks   [Q/ESC] quit",
         ]
-        if not enabled:
-            lines.insert(0, "-- VOICE CONTROL DISABLED --")
         line_height = self.INFO_FONT_SIZE + 4
         panel_height = len(lines) * line_height + self.INFO_PADDING * 2
         screen_height = self._screen.get_height()
@@ -160,7 +155,7 @@ class PygameView:
         panel_surface = pygame.Surface((screen_width, panel_height), pygame.SRCALPHA)
         panel_surface.fill((0, 0, 0, 180))
         self._screen.blit(panel_surface, (0, panel_y))
-        color = self.DISABLED_COLOR if not enabled else self.INFO_COLOR
+        color = self.INFO_COLOR
         y = panel_y + self.INFO_PADDING
         for line in lines:
             text_surface = self._font.render(line, True, color)

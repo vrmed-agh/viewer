@@ -22,7 +22,6 @@ class ViewerController:
         self._steering_handlers = steering_handlers
         self._scan_index: int = 0
         self._slice_index: int = 0
-        self._enabled: bool = True
         self._zoom: float = 1.0
         self._pan_x: int = 0
         self._pan_y: int = 0
@@ -53,13 +52,6 @@ class ViewerController:
 
     def _handle(self, action: ViewerAction) -> None:
         command = action.command
-
-        if command == ViewerCommand.TOGGLE:
-            self._enabled = not self._enabled
-            return
-
-        if not self._enabled and command != ViewerCommand.TOGGLE:
-            return
 
         if command == ViewerCommand.REPEAT:
             if self._last_action is not None:
@@ -249,5 +241,4 @@ class ViewerController:
             window_width_delta=self._window_width_delta,
             masks_visible=self._masks_visible,
             mask_slice=mask_slice,
-            enabled=self._enabled,
         )

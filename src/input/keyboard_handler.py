@@ -31,7 +31,6 @@ class KeyboardSteeringHandler(SteeringHandler):
         pygame.K_COMMA: ViewerCommand.DECREASE_BRIGHTNESS,
         pygame.K_m: ViewerCommand.SHOW_MASKS,
         pygame.K_n: ViewerCommand.HIDE_MASKS,
-        pygame.K_t: ViewerCommand.TOGGLE,
     }
 
     def steer(self, events: list[pygame.event.Event]) -> Iterator[ViewerAction]:

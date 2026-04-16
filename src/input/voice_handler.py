@@ -34,15 +34,6 @@ POLISH_CHAR_TRANSLATION = str.maketrans({
 })
 
 COMMAND_ALIASES: dict[ViewerCommand, list[str]] = {
-    ViewerCommand.TOGGLE: [
-        "włącz",
-        "wylacz",
-        "wyłącz",
-        "wlacz",
-        "aktywuj",
-        "dezaktywuj",
-        "toggle",
-    ],
     ViewerCommand.NEXT_SCAN: [
         "następna seria",
         "nastepna seria",

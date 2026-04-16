@@ -8,7 +8,6 @@ class ViewerCommand(Enum):
     NEXT_SCAN = auto()
     PREV_SCAN = auto()
     QUIT = auto()
-    TOGGLE = auto()
     ZOOM_IN = auto()
     ZOOM_OUT = auto()
     PAN_LEFT = auto()
