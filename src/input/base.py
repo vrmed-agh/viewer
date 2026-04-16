@@ -3,10 +3,10 @@ from typing import Iterator
 
 import pygame
 
-from src.input.commands import ViewerCommand
+from src.input.commands import ViewerAction
 
 
 class SteeringHandler(ABC):
     @abstractmethod
-    def steer(self, events: list[pygame.event.Event]) -> Iterator[ViewerCommand]:
+    def steer(self, events: list[pygame.event.Event]) -> Iterator[ViewerAction]:
         ...
