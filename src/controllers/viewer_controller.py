@@ -232,7 +232,11 @@ class ViewerController:
                 mask_slice = volume[self._slice_index]
 
         self._view.render(
-            slice_data=current_slice,
+            image_slice=current_slice.pixel_array,
+            rescale_slope=current_slice.rescale_slope,
+            rescale_intercept=current_slice.rescale_intercept,
+            window_center=current_slice.window_center,
+            window_width=current_slice.window_width,
             scan_name=current_scan.name,
             scan_index=self._scan_index,
             scan_count=self._dataset.scan_count,
