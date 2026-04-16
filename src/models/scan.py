@@ -1,8 +1,4 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-
-import numpy as np
 
 from src.models.nrrd_mask import NrrdMask
 from src.models.slice_data import SliceData
@@ -15,16 +11,33 @@ class Scan:
     modality: str
     slices: list[SliceData] = field(default_factory=list)
     nrrd_mask: NrrdMask | None = None
-    volume: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 0), dtype=np.int16))
-    rescale_slope: float = 1.0
-    rescale_intercept: float = 0.0
-    window_center: float = 50.0
-    window_width: float = 500.0
+    series_description: str = ""
+    plane: str = "unknown"
+    is_localizer: bool = False
 
     @property
     def name(self) -> str:
-        return f"Series #{self.series_number} ({self.modality})"
+        description = f" - {self.series_description}" if self.series_description else ""
+        return f"Series #{self.series_number} ({self.modality}, {self.plane_display_name}){description}"
 
     @property
     def slice_count(self) -> int:
-        return self.volume.shape[0] if self.volume.ndim == 3 else len(self.slices)
+        return len(self.slices)
+
+    @property
+    def plane_display_name(self) -> str:
+        if self.is_localizer:
+            return "lokalizator"
+
+        mapping = {
+            "axial": "osiowa",
+            "coronal": "czołowa",
+            "sagittal": "strzałkowa",
+            "unknown": "nieznana",
+            "localizer": "lokalizator",
+        }
+        return mapping.get(self.plane, self.plane)
+
+    @property
+    def is_volume(self) -> bool:
+        return not self.is_localizer and self.slice_count > 1
