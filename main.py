@@ -6,6 +6,7 @@ from src.controllers.viewer_controller import ViewerController
 from src.input.keyboard_handler import KeyboardSteeringHandler
 from src.input.voice_handler import VoiceSteeringHandler
 from src.repositories.dicom_repository import DicomRepository
+from src.repositories.nrrd_repository import NrrdRepository
 from src.views.pygame_view import PygameView
 
 DATA_ROOT = Path("data")
@@ -38,6 +39,20 @@ def main() -> None:
     print(f"Loaded {dataset.scan_count} CT scan(s).")
     for index, scan in enumerate(dataset.scans):
         print(f"  [{index}] {scan.name}: {scan.slice_count} slices")
+
+    nrrd_repository = NrrdRepository()
+    dataset_dir = DATA_ROOT / dataset_name
+    for nrrd_path in dataset_dir.glob("*.nrrd"):
+        try:
+            series_number = int(nrrd_path.stem)
+        except ValueError:
+            continue
+        scan = next((s for s in dataset.scans if s.series_number == series_number), None)
+        if scan is None:
+            print(f"Warning: no scan with series number {series_number} for {nrrd_path.name}", file=sys.stderr)
+            continue
+        scan.nrrd_mask = nrrd_repository.load_mask(str(nrrd_path), series_number, scan.slice_count)
+        print(f"  attached mask {nrrd_path.name} to series #{series_number}")
 
     view = PygameView()
     steering_handlers = [KeyboardSteeringHandler(), VoiceSteeringHandler()]
