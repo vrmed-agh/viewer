@@ -1,7 +1,6 @@
 import numpy as np
 import pygame
 
-from src.models.slice_data import SliceData
 from src.utils.pixel_utils import apply_windowing, grayscale_to_rgb, to_pygame_surface_array
 
 
@@ -27,14 +26,17 @@ class PygameView:
         self._font = pygame.font.SysFont("monospace", self.INFO_FONT_SIZE)
         self._clock = pygame.time.Clock()
         self._cached_surface: pygame.Surface | None = None
-        self._cached_slice_id: int | None = None
-        self._cached_window: tuple[float, float] | None = None
+        self._cached_slice_key: tuple | None = None
         self._cached_mask_surface: pygame.Surface | None = None
-        self._cached_mask_id: int | None = None
+        self._cached_mask_key: tuple | None = None
 
     def render(
         self,
-        slice_data: SliceData,
+        image_slice: np.ndarray,
+        rescale_slope: float,
+        rescale_intercept: float,
+        window_center: float,
+        window_width: float,
         scan_name: str,
         scan_index: int,
         scan_count: int,
@@ -51,10 +53,12 @@ class PygameView:
     ) -> None:
         self._screen.fill((0, 0, 0))
 
-        surface = self._get_slice_surface(slice_data, window_center_delta, window_width_delta)
+        slice_key = (scan_index, plane, slice_index, window_center + window_center_delta, window_width + window_width_delta)
+        surface = self._get_slice_surface(image_slice, rescale_slope, rescale_intercept, window_center + window_center_delta, window_width + window_width_delta, slice_key)
 
         if masks_visible and mask_slice is not None:
-            mask_surface = self._get_mask_surface(mask_slice, surface.get_width(), surface.get_height())
+            mask_key = (scan_index, plane, slice_index)
+            mask_surface = self._get_mask_surface(mask_slice, surface.get_width(), surface.get_height(), mask_key)
             surface.blit(mask_surface, (0, 0))
 
         if zoom != 1.0:
@@ -72,35 +76,29 @@ class PygameView:
 
     def _get_slice_surface(
         self,
-        slice_data: SliceData,
-        window_center_delta: float,
-        window_width_delta: float,
+        image_slice: np.ndarray,
+        rescale_slope: float,
+        rescale_intercept: float,
+        window_center: float,
+        window_width: float,
+        cache_key: tuple,
     ) -> pygame.Surface:
-        window_center = slice_data.window_center + window_center_delta
-        window_width = max(1.0, slice_data.window_width + window_width_delta)
-        window_key = (window_center, window_width)
-
-        if (
-            id(slice_data) == self._cached_slice_id
-            and self._cached_surface is not None
-            and self._cached_window == window_key
-        ):
+        if self._cached_slice_key == cache_key and self._cached_surface is not None:
             return self._cached_surface
 
         gray = apply_windowing(
-            slice_data.pixel_array,
-            slice_data.rescale_slope,
-            slice_data.rescale_intercept,
+            image_slice,
+            rescale_slope,
+            rescale_intercept,
             window_center,
-            window_width,
+            max(1.0, window_width),
         )
         rgb = grayscale_to_rgb(gray)
         transposed = to_pygame_surface_array(rgb)
         surface = pygame.surfarray.make_surface(transposed)
 
         self._cached_surface = surface
-        self._cached_slice_id = id(slice_data)
-        self._cached_window = window_key
+        self._cached_slice_key = cache_key
         return surface
 
     def _get_mask_surface(
@@ -108,8 +106,9 @@ class PygameView:
         mask_slice: np.ndarray,
         width: int,
         height: int,
+        cache_key: tuple,
     ) -> pygame.Surface:
-        if id(mask_slice) == self._cached_mask_id and self._cached_mask_surface is not None:
+        if self._cached_mask_key == cache_key and self._cached_mask_surface is not None:
             return self._cached_mask_surface
 
         mask_bool = (mask_slice > 0).astype(np.uint8)
@@ -120,7 +119,7 @@ class PygameView:
         rgba[..., 2] = self.MASK_COLOR[2] * mask_bool
         rgba[..., 3] = self.MASK_ALPHA * mask_bool
 
-        transposed = rgba
+        transposed = np.transpose(rgba, (1, 0, 2))
         surface = pygame.Surface((transposed.shape[0], transposed.shape[1]), pygame.SRCALPHA)
         pygame.surfarray.blit_array(surface, transposed[:, :, :3])
         alpha_array = pygame.surfarray.pixels_alpha(surface)
@@ -131,7 +130,7 @@ class PygameView:
             surface = pygame.transform.scale(surface, (width, height))
 
         self._cached_mask_surface = surface
-        self._cached_mask_id = id(mask_slice)
+        self._cached_mask_key = cache_key
         return surface
 
     def _render_info(

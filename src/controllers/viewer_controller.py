@@ -1,3 +1,5 @@
+import numpy as np
+
 from src.input.base import SteeringHandler
 from src.input.commands import ViewerAction, ViewerCommand
 from src.models.dataset import Dataset
@@ -9,6 +11,7 @@ class ViewerController:
     PAN_STEP = 40
     CONTRAST_STEP = 50
     BRIGHTNESS_STEP = 25
+    PLANE_AXIS = {"axial": 0, "coronal": 1, "sagittal": 2}
 
     def __init__(
         self,
@@ -91,10 +94,13 @@ class ViewerController:
             self._pan_y += self.PAN_STEP
         elif command == ViewerCommand.PLANE_AXIAL:
             self._plane = "axial"
+            self._slice_index = self._dataset.scans[self._scan_index].volume.shape[0] // 2
         elif command == ViewerCommand.PLANE_CORONAL:
             self._plane = "coronal"
+            self._slice_index = self._dataset.scans[self._scan_index].volume.shape[1] // 2
         elif command == ViewerCommand.PLANE_SAGITTAL:
             self._plane = "sagittal"
+            self._slice_index = self._dataset.scans[self._scan_index].volume.shape[2] // 2
         elif command == ViewerCommand.INCREASE_CONTRAST:
             self._window_width_delta -= self.CONTRAST_STEP
         elif command == ViewerCommand.DECREASE_CONTRAST:
@@ -146,38 +152,48 @@ class ViewerController:
             self._masks_visible,
         ) = state
 
+    def _current_axis(self) -> int:
+        return self.PLANE_AXIS[self._plane]
+
+    def _current_slice_count(self) -> int:
+        return self._dataset.scans[self._scan_index].volume.shape[self._current_axis()]
+
     def _switch_slice(self, delta: int) -> None:
-        current_scan = self._dataset.scans[self._scan_index]
-        self._slice_index = max(0, min(self._slice_index + delta, current_scan.slice_count - 1))
+        self._slice_index = max(0, min(self._slice_index + delta, self._current_slice_count() - 1))
 
     def _switch_scan(self, delta: int) -> None:
         self._scan_index = max(0, min(self._scan_index + delta, self._dataset.scan_count - 1))
-        self._slice_index = 0
+        self._slice_index = self._dataset.scans[self._scan_index].volume.shape[self._current_axis()] // 2
 
     def _go_to_slice(self, number: int | None) -> None:
         if number is None:
             return
-        current_scan = self._dataset.scans[self._scan_index]
-        index = max(0, min(number - 1, current_scan.slice_count - 1))
+        index = max(0, min(number - 1, self._current_slice_count() - 1))
         self._slice_index = index
 
     def _render(self) -> None:
         current_scan = self._dataset.scans[self._scan_index]
-        current_slice = current_scan.slices[self._slice_index]
+        axis = self._current_axis()
+        slice_count = self._current_slice_count()
+        image_slice = np.take(current_scan.volume, self._slice_index, axis=axis)
 
         mask_slice = None
         if current_scan.nrrd_mask is not None:
-            volume = current_scan.nrrd_mask.volume
-            if 0 <= self._slice_index < volume.shape[0]:
-                mask_slice = volume[self._slice_index]
+            mask_volume = current_scan.nrrd_mask.volume
+            if self._slice_index < mask_volume.shape[axis]:
+                mask_slice = np.take(mask_volume, self._slice_index, axis=axis)
 
         self._view.render(
-            slice_data=current_slice,
+            image_slice=image_slice,
+            rescale_slope=current_scan.rescale_slope,
+            rescale_intercept=current_scan.rescale_intercept,
+            window_center=current_scan.window_center,
+            window_width=current_scan.window_width,
             scan_name=current_scan.name,
             scan_index=self._scan_index,
             scan_count=self._dataset.scan_count,
             slice_index=self._slice_index,
-            slice_count=current_scan.slice_count,
+            slice_count=slice_count,
             zoom=self._zoom,
             pan=(self._pan_x, self._pan_y),
             plane=self._plane,

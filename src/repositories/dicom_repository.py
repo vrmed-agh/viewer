@@ -1,5 +1,6 @@
 from collections import defaultdict
 
+import numpy as np
 import pydicom
 from pydicom.fileset import FileSet
 
@@ -48,11 +49,19 @@ class DicomRepository(Repository):
 
         slices.sort(key=lambda slice_data: slice_data.instance_number)
 
+        volume = np.stack([s.pixel_array for s in slices], axis=0)
+
+        first = slices[0] if slices else None
         return Scan(
             series_number=series_number,
             series_instance_uid=series_uid,
             modality=modality,
             slices=slices,
+            volume=volume,
+            rescale_slope=first.rescale_slope if first else 1.0,
+            rescale_intercept=first.rescale_intercept if first else 0.0,
+            window_center=first.window_center if first else 50.0,
+            window_width=first.window_width if first else 500.0,
         )
 
     def _build_slice(self, dcm) -> SliceData:
