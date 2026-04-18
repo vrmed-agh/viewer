@@ -11,7 +11,15 @@ class PygameView:
     INFO_FONT_SIZE = 18
     INFO_COLOR = (200, 200, 200)
     INFO_PADDING = 8
-    MASK_COLOR = (255, 80, 0)
+    MASK_COLORS = [(0,0,0),
+                    (85, 255, 255),
+                    (255, 170, 0),
+                    (0, 170, 255),
+                    (170, 0, 255),
+                    (255, 0, 0),
+                    (255, 255, 0),
+                    (65, 58, 255),
+                    (128, 174, 128),]
     MASK_ALPHA = 140
 
     def __init__(self) -> None:
@@ -109,13 +117,13 @@ class PygameView:
         if self._cached_mask_key == cache_key and self._cached_mask_surface is not None:
             return self._cached_mask_surface
 
-        mask_bool = (mask_slice > 0).astype(np.uint8)
-
-        rgba = np.zeros((mask_bool.shape[0], mask_bool.shape[1], 4), dtype=np.uint8)
-        rgba[..., 0] = self.MASK_COLOR[0] * mask_bool
-        rgba[..., 1] = self.MASK_COLOR[1] * mask_bool
-        rgba[..., 2] = self.MASK_COLOR[2] * mask_bool
-        rgba[..., 3] = self.MASK_ALPHA * mask_bool
+        rgba = np.zeros((mask_slice.shape[0], mask_slice.shape[1], 4), dtype=np.uint8)
+        for label in range(1, len(self.MASK_COLORS)):
+            mask = (mask_slice == label)
+            rgba[mask, 0] = self.MASK_COLORS[label][0]
+            rgba[mask, 1] = self.MASK_COLORS[label][1]
+            rgba[mask, 2] = self.MASK_COLORS[label][2]
+            rgba[mask, 3] = self.MASK_ALPHA
 
         transposed = rgba
         surface = pygame.Surface((transposed.shape[0], transposed.shape[1]), pygame.SRCALPHA)

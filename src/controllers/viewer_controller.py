@@ -33,6 +33,7 @@ class ViewerController:
         self._history: list[tuple] = []
         self._preferred_series_by_plane = self._build_preferred_series_map()
         self._log_preferred_series_map()
+        self._last_slice_per_scan: dict[tuple[int, str], int] = {}
 
     def run(self) -> None:
         running = True
@@ -147,14 +148,16 @@ class ViewerController:
             self._masks_visible,
         ) = state
         self._sync_plane_from_current_scan()
+        self._last_slice_per_scan[(self._scan_index, self._plane)] = self._slice_index
 
     def _switch_slice(self, delta: int) -> None:
         current_scan = self._current_scan()
         self._slice_index = max(0, min(self._slice_index + delta, current_scan.slice_count - 1))
+        self._last_slice_per_scan[(self._scan_index, self._plane)] = self._slice_index
 
     def _switch_scan(self, delta: int) -> None:
         self._scan_index = max(0, min(self._scan_index + delta, self._dataset.scan_count - 1))
-        self._slice_index = 0
+        self._slice_index = self._last_slice_per_scan.get((self._scan_index, self._plane), 0)
         self._sync_plane_from_current_scan()
 
     def _build_preferred_series_map(self) -> dict[str, int]:
@@ -198,7 +201,7 @@ class ViewerController:
             return
 
         self._scan_index = target_index
-        self._slice_index = 0
+        self._slice_index = self._last_slice_per_scan.get((self._scan_index, plane), 0)
         self._sync_plane_from_current_scan()
         target_scan = self._current_scan()
         print(
@@ -212,6 +215,7 @@ class ViewerController:
         current_scan = self._current_scan()
         index = max(0, min(number - 1, current_scan.slice_count - 1))
         self._slice_index = index
+        self._last_slice_per_scan[(self._scan_index, self._plane)] = self._slice_index
 
     def _render(self) -> None:
         current_scan = self._current_scan()
