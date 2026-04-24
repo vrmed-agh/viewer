@@ -40,6 +40,10 @@ def main() -> None:
     for index, scan in enumerate(dataset.scans):
         print(f"  [{index}] {scan.name}: {scan.slice_count} slices")
 
+    # Maski segmentacji (pliki .nrrd) dopasowujemy do serii DICOM po
+    # nazwie pliku: nazwa MUSI być liczbą odpowiadającą SeriesNumber,
+    # np. "5.nrrd" zostanie dołączona do serii #5. Pliki o innych nazwach
+    # (np. opisowych) są po cichu pomijane przez ValueError na int().
     nrrd_repository = NrrdRepository()
     dataset_dir = DATA_ROOT / dataset_name
     for nrrd_path in dataset_dir.glob("*.nrrd"):

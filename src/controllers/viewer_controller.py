@@ -33,6 +33,10 @@ class ViewerController:
         self._history: list[tuple] = []
         self._preferred_series_by_plane = self._build_preferred_series_map()
         self._log_preferred_series_map()
+        # Pamięć ostatnio oglądanego przekroju dla każdej pary (scan, płaszczyzna).
+        # Po przełączeniu płaszczyzny lub serii przywracamy pozycję, na której
+        # użytkownik skończył, zamiast zaczynać od zera – ważne przy szybkim
+        # przechodzeniu między widokami.
         self._last_slice_per_scan: dict[tuple[int, str], int] = {}
 
     def run(self) -> None:
@@ -132,6 +136,10 @@ class ViewerController:
         if len(self._history) > 100:
             self._history.pop(0)
 
+    # Cofnięcie ostatniej akcji. UWAGA: kolejność pól w rozpakowaniu krotki
+    # MUSI odpowiadać kolejności w _snapshot(). Każda zmiana tam wymaga
+    # aktualizacji tutaj – w przeciwnym razie stan zostanie niepoprawnie
+    # przywrócony (np. zoom trafi do pan_x).
     def _undo(self) -> None:
         if not self._history:
             return
@@ -160,6 +168,13 @@ class ViewerController:
         self._slice_index = self._last_slice_per_scan.get((self._scan_index, self._plane), 0)
         self._sync_plane_from_current_scan()
 
+    # Dla każdej z trzech anatomicznych płaszczyzn wybieramy DOMYŚLNĄ serię,
+    # na którą przełączymy się po komendzie głosowej ("płaszczyzna czołowa").
+    # Kryteria wyboru (w kolejności priorytetu):
+    #   1) serie będące volume (scan.is_volume: nie-lokalizator, >1 slice),
+    #   2) jeśli brak volume – dowolna seria multi-slice w danej płaszczyźnie,
+    #   3) przy remisie wygrywa niższy series_number, a w ostateczności
+    #      niższy indeks w datasecie (tie-break dla stabilności).
     def _build_preferred_series_map(self) -> dict[str, int]:
         preferred: dict[str, int] = {}
         planes = ("axial", "coronal", "sagittal")
@@ -194,6 +209,10 @@ class ViewerController:
                 f"({scan.plane_display_name}, {scan.slice_count} slices) - {description}"
             )
 
+    # Przełączenie na wybraną płaszczyznę. Znajdujemy dla niej wcześniej
+    # wyznaczoną serię preferowaną, ustawiamy scan_index, a slice_index
+    # przywracamy z _last_slice_per_scan (albo 0 przy pierwszej wizycie).
+    # Na końcu synchronizujemy self._plane ze stanem aktualnego scanu.
     def _switch_to_plane(self, plane: str) -> None:
         target_index = self._preferred_series_by_plane.get(plane)
         if target_index is None:

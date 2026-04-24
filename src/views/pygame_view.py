@@ -11,6 +11,10 @@ class PygameView:
     INFO_FONT_SIZE = 18
     INFO_COLOR = (200, 200, 200)
     INFO_PADDING = 8
+    # Paleta kolorów dla kolejnych etykiet masek segmentacji (RGB).
+    # Indeks 0 = tło / brak etykiety (pomijany przy rysowaniu), indeksy 1-8 =
+    # różne klasy anatomiczne. Kolory dobrane tak, aby były wyraźnie różne
+    # na tle obrazu w odcieniach szarości.
     MASK_COLORS = [(0,0,0),
                     (85, 255, 255),
                     (255, 170, 0),
@@ -32,6 +36,11 @@ class PygameView:
         pygame.display.set_caption(self.WINDOW_TITLE)
         self._font = pygame.font.SysFont("monospace", self.INFO_FONT_SIZE)
         self._clock = pygame.time.Clock()
+        # Dwa niezależne cache: jeden dla zrenderowanego przekroju DICOM
+        # (po windowingu), drugi dla maski. Klucze cache to krotki
+        # identyfikujące stan – gdy klucz się zmienia, regenerujemy
+        # powierzchnię. Dzięki temu przesuwanie/zoom nie wymusza kosztownego
+        # windowingu, a zmiana jasności automatycznie inwaliduje cache.
         self._cached_surface: pygame.Surface | None = None
         self._cached_slice_key: tuple | None = None
         self._cached_mask_surface: pygame.Surface | None = None
@@ -59,6 +68,9 @@ class PygameView:
     ) -> None:
         self._screen.fill((0, 0, 0))
 
+        # Klucz zawiera EFEKTYWNE wartości okna (bazowe + delta), a nie same
+        # delty – dzięki temu zmiana scanu z innym presetem też unieważni
+        # cache, nawet jeśli użytkownik nie ruszał jasności/kontrastu.
         slice_key = (scan_index, plane, slice_index, window_center + window_center_delta, window_width + window_width_delta)
         surface = self._get_slice_surface(image_slice, rescale_slope, rescale_intercept, window_center + window_center_delta, window_width + window_width_delta, slice_key)
 
@@ -67,6 +79,10 @@ class PygameView:
             mask_surface = self._get_mask_surface(mask_slice, surface.get_width(), surface.get_height(), mask_key)
             surface.blit(mask_surface, (0, 0))
 
+        # smoothscale zamiast scale – interpolacja bikubiczna daje znacznie
+        # lepszy obraz przy powiększeniach niż najbliższy sąsiad. max(1, ...)
+        # chroni przed zerowym wymiarem przy bardzo małym zoomie (pygame
+        # rzuciłby wtedy wyjątek).
         if zoom != 1.0:
             size = (max(1, int(surface.get_width() * zoom)), max(1, int(surface.get_height() * zoom)))
             surface = pygame.transform.smoothscale(surface, size)
@@ -107,6 +123,13 @@ class PygameView:
         self._cached_slice_key = cache_key
         return surface
 
+    # Budowanie półprzezroczystej powierzchni maski. Dla każdej etykiety
+    # (1..N) tworzymy maskę bool i wpisujemy odpowiedni kolor RGB oraz
+    # alphę do tablicy RGBA. Następnie musimy przenieść tablicę do pygame
+    # przez surfarray – API rozdziela kanały kolorów (blit_array dla RGB)
+    # od kanału alpha (pixels_alpha zwraca mutowalny widok z lockiem).
+    # Skalowanie do rozmiaru obrazu DICOM robimy na końcu, żeby kolorowe
+    # bloki nie były interpolowane z tłem.
     def _get_mask_surface(
         self,
         mask_slice: np.ndarray,
@@ -125,6 +148,9 @@ class PygameView:
             rgba[mask, 2] = self.MASK_COLORS[label][2]
             rgba[mask, 3] = self.MASK_ALPHA
 
+        # blit_array wspiera tylko RGB – alphę ustawiamy osobno przez
+        # pixels_alpha. `del alpha_array` zwalnia surface lock przed
+        # dalszym użyciem powierzchni (blit, scale).
         transposed = rgba
         surface = pygame.Surface((transposed.shape[0], transposed.shape[1]), pygame.SRCALPHA)
         pygame.surfarray.blit_array(surface, transposed[:, :, :3])
@@ -139,6 +165,10 @@ class PygameView:
         self._cached_mask_key = cache_key
         return surface
 
+    # Dolny panel informacyjny. Rysujemy go jako osobną powierzchnię z
+    # kanałem alpha (SRCALPHA) wypełnioną czernią z alpha 180 – daje to
+    # efekt półprzezroczystego paska pod tekstem, dzięki czemu napisy są
+    # czytelne nawet na jasnym obrazie DICOM.
     def _render_info(
         self,
         scan_name: str,

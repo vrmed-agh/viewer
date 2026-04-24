@@ -35,5 +35,8 @@ def grayscale_to_rgb(gray: np.ndarray) -> np.ndarray:
     return np.stack([gray, gray, gray], axis=-1)
 
 
+# pygame.surfarray.make_surface oczekuje tablicy w układzie (width, height, 3),
+# podczas gdy numpy/pydicom zwracają obrazy jako (height, width, 3). Zamieniamy
+# osie 0 i 1, żeby obraz nie został obrócony przy konwersji na Surface.
 def to_pygame_surface_array(rgb: np.ndarray) -> np.ndarray:
     return np.transpose(rgb, (1, 0, 2))

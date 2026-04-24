@@ -17,6 +17,12 @@ class DicomRepository(Repository):
         file_set = FileSet(path)
         scan_map: dict[str, list] = defaultdict(list)
 
+        # Przechodzimy po drzewie DICOMDIR. Sięgamy do wewnętrznego _record,
+        # bo pydicom nie udostępnia publicznego API do surowych atrybutów
+        # rekordu katalogu. Filtrujemy: tylko rekordy IMAGE (pomijamy PATIENT/
+        # STUDY/SERIES) oraz tylko modalność CT, którą czytamy z rekordu
+        # rodzica (SERIES). Instancje grupujemy po SeriesInstanceUID, żeby
+        # złożyć je w jeden Scan.
         for file_instance in file_set:
             record = file_instance.node._record
             if str(getattr(record, "DirectoryRecordType", "")).upper() != "IMAGE":
@@ -73,6 +79,11 @@ class DicomRepository(Repository):
         instance_number = int(getattr(dcm, "InstanceNumber", 0))
         slice_location = float(getattr(dcm, "SliceLocation", 0.0))
 
+        # WindowCenter i WindowWidth w DICOM są polami VR=DS i mogą być albo
+        # pojedynczą liczbą, albo sekwencją wartości (różne presety okienek
+        # oferowane przez skaner). Bierzemy pierwszą wartość – to presety
+        # domyślne. Duck-typing przez hasattr("__iter__") zamiast isinstance,
+        # bo pydicom zwraca tu własne typy MultiValue.
         window_center = getattr(dcm, "WindowCenter", 50.0)
         window_width = getattr(dcm, "WindowWidth", 500.0)
         if hasattr(window_center, "__iter__"):
@@ -92,6 +103,12 @@ class DicomRepository(Repository):
             window_width=float(window_width),
         )
 
+    # Heurystyka rozpoznawania obrazów lokalizacyjnych (scout/topogram) –
+    # czyli pojedynczych projekcji robionych przed właściwym badaniem, żeby
+    # zaplanować zakres skanu. Nie są to przekroje 3D i traktujemy je
+    # osobno. Sygnały: (1) seria ma tylko jeden slice, (2) opis serii
+    # zawiera słowo kluczowe, (3) DICOM ImageType zawiera słowo kluczowe
+    # lub "projection".
     def _is_localizer_like(self, dcm, series_description: str, slice_count: int) -> bool:
         if slice_count <= 1:
             return True
@@ -115,6 +132,16 @@ class DicomRepository(Repository):
             return plane_from_iop
         return self._plane_from_description(series_description)
 
+    # Wykrywanie płaszczyzny obrazowania z geometrii DICOM.
+    # ImageOrientationPatient (IOP) zawiera 6 liczb: wektor kierunku wiersza
+    # (row, 3 liczby) i wektor kierunku kolumny (col, 3 liczby) w układzie
+    # pacjenta (X=lewo-prawo, Y=przód-tył, Z=głowa-stopy). Iloczyn wektorowy
+    # row × col daje normalną do płaszczyzny obrazowania. Oś, wzdłuż której
+    # normalna ma największą wartość bezwzględną, wskazuje do jakiej osi
+    # anatomicznej płaszczyzna jest prostopadła:
+    #   normalna wzdłuż X => płaszczyzna strzałkowa (sagittal)
+    #   normalna wzdłuż Y => płaszczyzna czołowa (coronal)
+    #   normalna wzdłuż Z => płaszczyzna osiowa/poprzeczna (axial)
     def _plane_from_image_orientation(self, dcm) -> str | None:
         orientation = getattr(dcm, "ImageOrientationPatient", None)
         if orientation is None:
@@ -139,6 +166,10 @@ class DicomRepository(Repository):
             return "coronal"
         return "axial"
 
+    # Fallback tekstowy, gdy DICOM nie zawiera ImageOrientationPatient.
+    # Dopasowujemy słowa kluczowe w opisie serii (EN + PL, różne prefiksy,
+    # np. "sag"/"strza"/"sagittal"). Mniej niezawodne niż IOP, bo opis jest
+    # polem wolnym i może się różnić między producentami.
     def _plane_from_description(self, description: str) -> str:
         text = (description or "").lower()
         if any(token in text for token in ("sag", "strza", "sagittal")):
