@@ -21,6 +21,10 @@ SAMPLE_RATE = 16_000
 BLOCKSIZE = 4_000
 FUZZY_THRESHOLD = 0.72
 
+# Tabela translacji polskich znaków do ASCII. Dzięki niej możemy porównywać
+# tekst zwracany przez Vosk z aliasami komend bez względu na to, czy model
+# oddał diakrytyki. Wywoływana w _normalize_text przed usunięciem reszty
+# znaków łączących przez NFKD.
 POLISH_CHAR_TRANSLATION = str.maketrans({
     "ą": "a",
     "ć": "c",
@@ -313,6 +317,9 @@ def _ensure_model() -> Path:
     return model_path
 
 
+# Usuwa łączone znaki diakrytyczne (Unicode combining marks) po rozkładzie NFKD.
+# Dodatkowa warstwa bezpieczeństwa obok POLISH_CHAR_TRANSLATION – łapie
+# egzotyczne znaki, których nie ma w naszej tabeli.
 def _strip_diacritics(text: str) -> str:
     return "".join(
         char
@@ -321,6 +328,11 @@ def _strip_diacritics(text: str) -> str:
     )
 
 
+# Potok normalizacji tekstu dla fuzzy matchingu:
+# 1) lowercase + trim, 2) podmiana polskich znaków na ASCII,
+# 3) NFKD + usunięcie combining marks, 4) wszystko poza [a-z0-9] -> spacja,
+# 5) zbicie wielokrotnych spacji. Wynik jest kanoniczną postacią, do której
+# sprowadzamy zarówno wypowiedź, jak i aliasy komend.
 def _normalize_text(text: str) -> str:
     text = text.lower().strip()
     text = text.translate(POLISH_CHAR_TRANSLATION)
@@ -333,6 +345,11 @@ def _normalize_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
+# Dopasowuje pojedynczy token (słowo) do jednej z płaszczyzn. Najpierw próba
+# bezpośredniego trafienia w słowniku aliasów (odmiany: "czolowa", "czolowej"
+# itd.), potem fuzzy matching. Próg 0.82 jest ostrzejszy niż domyślny
+# FUZZY_THRESHOLD – płaszczyzny są krótkie i podobne do siebie ("osiowa" vs
+# "osowa"), więc wymagamy wyższego podobieństwa, żeby nie mylić ich między sobą.
 def _match_plane_token(token: str) -> ViewerCommand | None:
     token = _normalize_text(token)
     if not token:
@@ -356,6 +373,11 @@ def _match_plane_token(token: str) -> ViewerCommand | None:
     return None
 
 
+# Luźne wyciąganie komendy płaszczyzny z dowolnej wypowiedzi. Strategia:
+# najpierw pełna fraza ("plaszczyzna czolowa"), potem szukamy słowa
+# kluczowego "plaszczyzna" i bierzemy tokeny po nim, w ostatniej kolejności
+# fuzzy-matchujemy wszystkie tokeny. Używane gdy wiemy, że wypowiedź wygląda
+# na "coś z płaszczyzną" (_looks_like_plane_utterance).
 def _extract_plane_command(text: str) -> ViewerCommand | None:
     normalized = _normalize_text(text)
     if not normalized:
@@ -379,6 +401,10 @@ def _extract_plane_command(text: str) -> ViewerCommand | None:
     return None
 
 
+# Heurystyka: czy wypowiedź w ogóle dotyczy zmiany płaszczyzny? Luźniejszy
+# próg 0.78 (vs 0.82 w _match_plane_token) – tutaj wykrywamy jedynie
+# *intencję*, a nie konkretną komendę, więc wolimy false positive i przejście
+# do dokładnego parsowania niż false negative i zignorowanie wypowiedzi.
 def _looks_like_plane_utterance(text: str) -> bool:
     normalized = _normalize_text(text)
     if not normalized:
@@ -396,6 +422,12 @@ def _looks_like_plane_utterance(text: str) -> bool:
 
     return False
 
+# Ścisłe dopasowanie komendy płaszczyzny z walidacją gramatyki. Oczekuje
+# dokładnie "plaszczyzna" + JEDEN poprawny token ("czolowa"/"strzalkowa"/...).
+# Zwraca krotkę (komenda, czy_to_wyglądało_na_frazę_płaszczyznową). Druga
+# wartość pozwala wołającemu odróżnić "to była próba wydania komendy
+# płaszczyzny, ale nieprawidłowa – zignoruj" od "to w ogóle nie płaszczyzna,
+# idź dalej szukać innej komendy".
 def _match_plane_command_strict(normalized: str) -> tuple[ViewerCommand | None, bool]:
     normalized = _normalize_text(normalized)
     if not normalized:
@@ -429,6 +461,15 @@ def _match_plane_command_strict(normalized: str) -> tuple[ViewerCommand | None, 
     return command, True
 
 
+# Główny algorytm dopasowania komendy do wypowiedzi. Trzy etapy:
+#   1) sprawdź czy to ścisła fraza płaszczyznowa (krótka ścieżka, z walidacją);
+#   2) przeiteruj aliasy od NAJDŁUŻSZYCH do najkrótszych i sprawdź substring
+#      w znormalizowanej wypowiedzi – dłuższe aliasy mają pierwszeństwo, żeby
+#      "następna seria" wygrała z ogólnym "następny";
+#   3) fuzzy matching: pełna wypowiedź vs alias oraz sliding window po
+#      tokenach (alias osadzony w dłuższej frazie). Akceptujemy najlepsze
+#      trafienie dopiero powyżej FUZZY_THRESHOLD (0.72), żeby nie emitować
+#      komend przy losowych szumach.
 def _best_command_match(text: str) -> ViewerCommand | None:
     normalized = _normalize_text(text)
     if not normalized:
@@ -456,6 +497,9 @@ def _best_command_match(text: str) -> ViewerCommand | None:
             best_score = score
             best_command = command
 
+        # Sliding window: przesuwamy okno wielkości aliasu po tokenach
+        # wypowiedzi i fuzzy-matchujemy. Dzięki temu "pokaż proszę następną
+        # serię teraz" dopasuje alias "następna seria".
         normalized_tokens = normalized.split()
         alias_tokens = alias.split()
         window_size = len(alias_tokens)
@@ -474,6 +518,10 @@ def _best_command_match(text: str) -> ViewerCommand | None:
     return None
 
 
+# Wyciąga numer przekroju z wypowiedzi. Najpierw próba znalezienia cyfr
+# (1–3 znaki), potem fallback do sumowania polskich liczebników słownych
+# – np. "dwadzieścia pięć" => 20 + 5 = 25. FILLER_WORDS odfiltrowują słowa
+# takie jak "pokaż", "numer", "do" które mogą się pojawić między liczebnikami.
 def _parse_slice_number(text: str) -> int | None:
     normalized = _normalize_text(text)
     if not normalized:
@@ -516,6 +564,15 @@ class VoiceSteeringHandler(SteeringHandler):
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
 
+    # Pętla nasłuchu uruchamiana w osobnym wątku (daemon). Tworzymy DWA
+    # równoległe recognizery Vosk: ogólny (pełna gramatyka komend + liczby)
+    # oraz wyspecjalizowany w płaszczyznach. Oba dostają te same próbki
+    # audio. Drugi recognizer jest dodatkowym zabezpieczeniem – jego węższa
+    # gramatyka ogranicza Vosk do słów płaszczyznowych, więc często łapie
+    # "płaszczyzna czołowa" nawet gdy ogólny recognizer pogubi się na
+    # szumach. Wyniki porównujemy i wybieramy ten bardziej dopasowany do
+    # rozpoznanej intencji. Komunikacja z głównym wątkiem pygame odbywa
+    # się przez self._queue.
     def _listen(self) -> None:
         print("[VOICE] Thread started")
 
@@ -591,6 +648,8 @@ class VoiceSteeringHandler(SteeringHandler):
             callback=callback,
         ):
             print("[VOICE] Listening...")
+            # Timeout 0.1 s pozwala na czyste zakończenie wątku po ustawieniu
+            # _stop_event zamiast blokującego czekania w nieskończoność.
             while not self._stop_event.wait(0.1):
                 pass
 
