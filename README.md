@@ -20,7 +20,7 @@ data/
 
 ```bash
 uv sync
-uv run main.py --dataset "Zatoki 1"
+uv run main.py --dataset "Zatoki 3"
 ```
 
 ## Stos technologiczny
