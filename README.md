@@ -7,7 +7,7 @@ Desktopowa przeglądarka obrazów tomografii komputerowej (DICOM) z obsługą ma
 ## Instrukcja użytkowania
 
 Zapisz zbiór danych w folderze `data/`, tak aby struktura plików wyglądała tak jak poniżej.
-Przesuń również plik `./3.nrrd` do `data/Zatoki 3/3.nrrd`.
+Przesuń również plik `./3.nrrd` do `data/Zatoki 3/3.nrrd`. Maski segmentacyjne przygotowane są dla przekrojów/slice'ów wyłącznie w płaszczyźnie osiowej.
 
 ```
 data/
